@@ -54,7 +54,6 @@
 Starting from this change, we expect that CodebaseBranches CRD use 'status' field as subresource
 
 
-<a name="v2.13.2"></a>
 ## [v2.13.2] - 2022-06-30
 ### Routine
 
@@ -188,10 +187,6 @@ Starting from this change, we expect that CodebaseBranches CRD use 'status' fiel
 - [EPMDEDP-5584]: Fix build image kaniko stage
 - [EPMDEDP-5352]: Apply crds to cluster during deploy
 
-
-[Unreleased]: https://github.com/epam/edp-library-stages/compare/v2.15.0...HEAD
-[v2.15.0]: https://github.com/epam/edp-library-stages/compare/v2.14.0...v2.15.0
-[v2.14.0]: https://github.com/epam/edp-library-stages/compare/v2.13.2...v2.14.0
 [v2.13.2]: https://github.com/epam/edp-library-stages/compare/v2.13.1...v2.13.2
 [v2.13.1]: https://github.com/epam/edp-library-stages/compare/v2.13.0...v2.13.1
 [v2.13.0]: https://github.com/epam/edp-library-stages/compare/v2.12.0...v2.13.0
