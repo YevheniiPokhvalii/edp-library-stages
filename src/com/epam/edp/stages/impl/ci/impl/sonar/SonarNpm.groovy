@@ -53,7 +53,7 @@ class SonarNpm {
             codebaseName = "${context.codebase.name}-${context.git.normalizedBranch}";
             workDir = context.workDir;
         }
-        def scriptText = """ ${scannerHome}/bin/sonar-scanner \
+        def scriptText = """ ${scannerHome}/bin/sonar-scanner -X \
                              -Dsonar.projectKey=${codebaseName} \
                              -Dsonar.projectName=${codebaseName} """;
         if (context.job.type == "build") {
