@@ -34,13 +34,6 @@ class Deploy {
         ).trim()
     }
 
-    def getRepositoryPath(codebase) {
-        if (codebase.strategy == "import") {
-            return codebase.gitProjectPath
-        }
-        return "/" + codebase.name
-    }
-
     def getRefspec(codebase) {
         return codebase.versioningType == "edp" ?
                 "refs/tags/build/${codebase.version}" :
@@ -64,10 +57,9 @@ class Deploy {
         script.println("[JENKINS][DEBUG] sshPort: ${sshPort}")
         script.println("[JENKINS][DEBUG] credentialsId: ${credentialsId}")
 
-        def repoPath = getRepositoryPath(codebase)
-        script.println("[JENKINS][DEBUG] Repository path: ${repoPath}")
+        script.println("[JENKINS][DEBUG] Repository path: ${codebase.gitProjectPath}")
 
-        def gitCodebaseUrl = "ssh://${autouser}@${host}:${sshPort}${repoPath}"
+        def gitCodebaseUrl = "ssh://${autouser}@${host}:${sshPort}${codebase.gitProjectPath}"
         def refspec = getRefspec(codebase)
 
         try {
@@ -107,7 +99,6 @@ class Deploy {
                 context.job.deployTimeout,
                 parametersMap
         )
-
         setAnnotationToStageCR(context, codebase.name, codebase.version, context.job.ciProject)
     }
 
@@ -118,18 +109,35 @@ class Deploy {
         script.println("[JENKINS][DEBUG] Annotation has been added to the ${stageName} stage")
     }
 
-    def setAnnotationToJenkins(context) {
+    def getApplicationFromStageCR(context) {
         def stageData = script.sh(
             script: "kubectl get stages.v2.edp.epam.com ${context.job.pipelineName}-${context.job.stageName} -n ${context.job.ciProject} --output=json",
             returnStdout: true).trim()
         def stageJsonData = new JsonSlurperClassic().parseText(stageData)
         def deployedVersions = stageJsonData.metadata.annotations
+        return deployedVersions
+    }
+
+    def setAnnotationToJenkins(deployedVersions) {
         def summary = script.manager.createSummary("notepad.png")
         summary.appendText("Deployed versions:", false)
         deployedVersions.each { version ->
-            summary.appendText("<li>${version}</li>", false)
+            if (version =~ /^app.edp.epam.com.*/) {
+                def normalizedVersion = script.sh(script: "cut -d '/' -f2- <<< ${version} | tr '=' ':'", returnStdout: true).trim()
+                summary.appendText("<li>${normalizedVersion}</li>", false)
+            }
         }
         script.println("[JENKINS][DEBUG] Annotation has been added to this job description")
+    }
+
+    def createJenkinsArtifacts(deployedVersions, artifactName) {
+        script.dir("${script.WORKSPACE}/artifacts") {
+            deployedVersions.each { version ->
+                if (version =~ /^app.edp.epam.com.*/) {
+                    script.sh("cut -d '/' -f2- <<< ${version} | tr '=' ':' >> ${artifactName}")
+                }
+            }
+        }
     }
 
     def getDockerRegistryInfo(context) {
@@ -180,6 +188,10 @@ class Deploy {
 
     void run(context) {
 
+        def prevDeployedVersions = getApplicationFromStageCR(context)
+        script.sh("rm -f ${script.WORKSPACE}/artifacts/*")
+        createJenkinsArtifacts(prevDeployedVersions, "prev_versions.txt")
+
         if (context.job.buildUser == null || context.job.buildUser == "")
             context.job.buildUser = getBuildUserFromLog(context)
 
@@ -191,7 +203,6 @@ class Deploy {
         while (!deployCodebasesList.isEmpty()) {
             def parallelCodebases = [:]
             def tempAppList = getNElements(deployCodebasesList, context.job.maxOfParallelDeployApps)
-
             tempAppList.each() { codebase ->
                 if ((codebase.version == "No deploy") || (codebase.version == "noImageExists")) {
                     script.println("[JENKINS][WARNING] Application ${codebase.name} deploy skipped")
@@ -222,6 +233,15 @@ class Deploy {
             }
             script.parallel parallelCodebases
         }
-        setAnnotationToJenkins(context)
+        def currDeployedVersions = getApplicationFromStageCR(context)
+        createJenkinsArtifacts(currDeployedVersions, "curr_versions.txt")
+        script.sh("diff -u ${script.WORKSPACE}/artifacts/prev_versions.txt ${script.WORKSPACE}/artifacts/curr_versions.txt > ${script.WORKSPACE}/artifacts/diff_versions.txt || true")
+        try{
+            script.archiveArtifacts artifacts: "artifacts/*.txt", onlyIfSuccessful: true
+        }catch(Exception e){
+            script.println("[JENKINS][DEBUG] Jenkins artifacts not found")
+            return 0;
+        }
+        setAnnotationToJenkins(currDeployedVersions)
     }
 }
